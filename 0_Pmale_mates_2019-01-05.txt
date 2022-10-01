@@ -1,0 +1,208 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jan 26 12:59:47 2017
+
+@author: Karol
+"""
+
+import csv
+
+###########################
+# Read a whole CSV to list of lists
+# Give it the file name
+# Each item in the 'big'/'outer' list is a row of the CSV
+# The items within those items are the rows of the CSV
+# To access row 5, column 3, type MYLIST[5][3] ("MYLIST" is whatever you've called the thing)
+def csvtolistlists(infile):
+  with open(infile, 'r') as f:
+    outlist = list(list(entry) for entry in csv.reader(f, delimiter = ','))
+  
+  return outlist
+
+###########################
+
+####################################
+# Function to reduce a data set
+# Remove any rows with NAs
+# Remove any rows where mother or father is unassigned (i.e. containing "*" "#")
+# Turn P-values to floats
+# Remove rows where P-value threshold is not met
+# IMPORTANT: remove the headrow first!
+def reduce_data_set(DATA, Pthresh=0.75):
+  # Remove NAs
+  DATA = [row for row in DATA if "NA" not in row] # so that it doesn't count "NA" etc as a parnter
+  # Remove rows with "*" or "#"
+  DATA = [row for row in DATA if "*" not in row]
+  DATA = [row for row in DATA if "#" not in row]
+  
+  # Turn numbers to floats
+  for row in DATA:
+    row[3] = float(row[3])
+    row[7] = float(row[7])
+    row[11] = float(row[11])
+  
+  # Keep only rows with P >= 0.60
+  DATA = [row for row in DATA if row[3]>=Pthresh]
+  DATA = [row for row in DATA if row[7]>=Pthresh]
+  DATA = [row for row in DATA if row[11]>=Pthresh]
+  
+  return DATA
+
+#################################################
+
+#########################################################
+# Function to check for potential mistakes in handling
+# Compare each list of offspring, mothers, fathers
+# First, a small function to compare the lists and return a list of positional differences if any are found
+def diffcheck(L1, L2):
+  # Compare the lists; this function ASSUMES YOU'VE KEPT THE HEAD ROW
+  if L1[1:] == L2[1:]:
+    # It helps later to be able to return something
+    OUT = []
+  else:
+    # Get a list of positional differences - these are like row numbers
+    OUT = [pos for pos in list(range(len(L1))) if L1[pos] != L2[pos]]
+  
+  return OUT
+
+# Now, the main checking function
+# Pass it a full parentage datasheet, with the headrows still on there
+# CHECK THAT THE COLUMN NUMBERS ARE THE CORRECT
+def check_all(DATA):
+  # Get offspring lists - 1st, 5th, and 9th columns in Excel, so 0, 4, 8
+  off1 = [entry[0] for entry in DATA]
+  off2 = [entry[4] for entry in DATA]
+  off3 = [entry[8] for entry in DATA]
+  
+  # Get dad lists
+  dad1 = [entry[1] for entry in DATA]
+  dad2 = [entry[5] for entry in DATA]
+  dad3 = [entry[9] for entry in DATA]
+  
+  # Get mum lists
+  mum1 = [entry[2] for entry in DATA]
+  mum2 = [entry[6] for entry in DATA]
+  mum3 = [entry[10] for entry in DATA]
+  
+  # Make some checks
+  # If everything is OK, this should join three empty lists into a single empty list
+  offcheck = diffcheck(off1, off2) + diffcheck(off1, off3) + diffcheck(off2, off3)
+  if len(offcheck) > 0:
+    print("Mismatches in offspring columns. Check the following rows:")
+    print(offcheck)
+  else:
+    print("Offspring lists are the same across runs")
+  
+  # Check the parents. We expect there to be some mismatches here
+  # But we can just gather them all up into one big bundle of bad rows
+  # Then we can see if there's anything the script can't handle in its current form
+  parentcheck = diffcheck(dad1, dad2) + diffcheck(dad1, dad3) + diffcheck(dad2, dad3) + diffcheck(mum1, mum2) + diffcheck(mum1, mum3) + diffcheck(mum2, mum3)
+  parentcheck = list(set(parentcheck))
+  parentcheck.sort()
+  # We expect this to include the first row, as this is the header row
+  if parentcheck[0] == 0:
+    parentcheck = parentcheck[1:]
+  else:
+    pass
+  
+  # Go and get these bad rows from the dataset
+  badrows = []
+  for rowN in parentcheck:
+    badrows.append(DATA[rowN])
+  
+  # Now, apply the reduce_data_set() function to this bad data
+  # At the end, there should be nothing left
+  badrows = reduce_data_set(badrows)
+  
+  # Is there anything left?
+  if len(badrows) > 0:
+    print("Problem rows:")
+    for entry in badrows:
+      print(entry)
+  
+  else:
+    print("No bad rows the script can't handle in its current form")
+  
+  print("\nPress 'enter' to proceed with rest of script")
+  input()
+
+# End of function
+########################################################################
+
+
+P_F1_data = csvtolistlists("Python_HC1_P_F1_mh3_2019-07-23.csv")
+
+############################
+
+
+#check_all(P_F1_data)
+#check_all(F1_F2_data)
+
+
+############################
+P_F1_data_head = P_F1_data[0]
+#1: 2nd row to the end of list
+P_F1_data = P_F1_data[1:] 
+
+
+# Remove rows prob <0.6
+P_F1_data = reduce_data_set(P_F1_data)
+
+# How many rows in both datasets?
+print("{0} rows in P_F1 data".format(len(P_F1_data)))
+
+
+################################################
+## Beginning of function to get mating success
+################################################
+ 
+# Function to process a single P-generation male
+### Return his ID, number of females he mated with:
+def do_male(male_ID, DATA_1=P_F1_data):
+  # Get offspring ID and male for every row involving that male
+  child_list_m = [row[0:3] for row in P_F1_data if male_ID in row]
+  
+  # How many females involved? 
+  all_females = [row[2] for row in child_list_m]
+  unique_females = list(set(all_females))
+  unique_females.sort()
+  n_his_partner = len(unique_females) #length of unique females he mated with - his number of partners
+  
+ 
+  
+  mates_outdata = [] 
+  
+  mates_outrow = [male_ID, n_his_partner]
+  mates_outdata.append(mates_outrow) #sticks to male_outdata list - male outrow
+  
+  return mates_outdata #return sticked list 
+
+######################################################
+
+# Get list of all males
+all_males = [row[1] for row in P_F1_data]
+# Reduce it to unique males
+unique_males = list(set(all_males))
+# Sort the unique males
+unique_males.sort()
+
+
+# Make a blank list for storing data
+OUTDATA_m = []
+# Go through all unique females...
+for m in unique_males:
+  # Get their data
+  male_data = do_male(m)
+  # Stick it on to OUTDATA
+  OUTDATA_m += male_data
+
+# Put a header row in to OUTDATA
+OUT_head = [["male_ID", "n_his_partner"]]
+OUTDATA_m = OUT_head + OUTDATA_m
+
+
+
+# Save the data
+with open("HC1_Pmale_Mates_2019-07-23.csv", "w", newline='') as f2:
+  writer = csv.writer(f2, delimiter=";")
+  writer.writerows(OUTDATA_m)
